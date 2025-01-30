@@ -188,6 +188,7 @@ func (l *Logger) Start(
 	//TODO: Remove
 	logWG.Add(2)
 	stopTracingLogRoutingChan := make(chan bool, 1)
+	stopMetricPipesChan := make(chan bool, 1)
 	atomic.StoreUint64(&bytesReadFromSrc, 0)
 	atomic.StoreUint64(&bytesSentToDst, 0)
 	atomic.StoreUint64(&numberOfNewLineChars, 0)
@@ -196,12 +197,13 @@ func (l *Logger) Start(
 		logWG.Done()
 	}()
 	go func() {
-		enableMetricPipeOut(l.Info.ContainerID, stopTracingLogRoutingChan)
+		enableMetricPipeOut(l.Info.ContainerID, stopMetricPipesChan)
 		logWG.Done()
 	}()
 	defer func() {
 		debug.SendEventsToLog(l.Info.ContainerID, "Sending signal to stop the ticker.", debug.DEBUG, 0)
 		stopTracingLogRoutingChan <- true
+		stopMetricPipesChan <- true
 		logWG.Wait()
 	}()
 
@@ -494,7 +496,7 @@ func exportMetricsToPipe(data []byte, pipe *os.File, containerID string) {
 	debug.SendEventsToLog(containerID, "Exporting the ticker...", debug.DEBUG, 0)
 	_, err := pipe.Write(data)
 	if err != nil {
-		debug.SendEventsToLog(
+		debug.SendEventsToLog(containerID,
 			fmt.Sprintf("Error exporting metrics to pipe %s: %s", pipe.Name(), err),
 			debug.DEBUG, 0)
 	} else {
