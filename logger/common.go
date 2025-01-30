@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -184,13 +185,18 @@ func (l *Logger) Start(
 	}
 
 	var logWG sync.WaitGroup
-	logWG.Add(1)
+	//TODO: Remove
+	logWG.Add(2)
 	stopTracingLogRoutingChan := make(chan bool, 1)
 	atomic.StoreUint64(&bytesReadFromSrc, 0)
 	atomic.StoreUint64(&bytesSentToDst, 0)
 	atomic.StoreUint64(&numberOfNewLineChars, 0)
 	go func() {
 		startTracingLogRouting(l.Info.ContainerID, stopTracingLogRoutingChan)
+		logWG.Done()
+	}()
+	go func() {
+		enableMetricPipeOut(l.Info.ContainerID, stopTracingLogRoutingChan)
 		logWG.Done()
 	}()
 	defer func() {
@@ -446,6 +452,55 @@ func startTracingLogRouting(containerID string, stop chan bool) {
 			return
 		}
 	}
+}
+
+// TODO: AFTER POC: move to appropriate location to make sure only being called during non-blocking mode
+func enableMetricPipeOut(containerID string, stop chan bool) {
+	pipePath := fmt.Sprintf("/tmp/%s-shim-logger-pipe", containerID)
+
+	// Open pipe write Location
+	pipe, err := os.OpenFile(pipePath, os.O_WRONLY, os.ModeNamedPipe)
+	if err != nil {
+		debug.SendEventsToLog(containerID,
+			fmt.Sprintf("Error opening write end %s: %s", pipePath, err),
+			debug.DEBUG, 0)
+	}
+	debug.SendEventsToLog(containerID, fmt.Sprintf("Created pipe Write location %s...", pipePath), debug.DEBUG, 0)
+
+	defer pipe.Close()
+	ticker := time.NewTicker(traceLogRoutingInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		// periodically capture time event for test
+		//	This could simulate a periodic capture of Metric data
+		case <-ticker.C:
+			log := fmt.Sprintf("Proof of concept %s", time.Now().Format("2006-01-02 15:04:05"))
+			debug.SendEventsToLog(containerID, fmt.Sprintf("Hit ticker, fired exportMetricsToPipe pipe %s: Log:%s", pipePath, log), debug.DEBUG, 0)
+			exportMetricsToPipe([]byte(log), pipe, containerID)
+		case <-stop:
+			ticker.Stop()
+			return
+
+		}
+
+	}
+
+}
+
+// exportMetricsToPipe calls piep function to allow
+func exportMetricsToPipe(data []byte, pipe *os.File, containerID string) {
+	debug.SendEventsToLog(containerID, "Exporting the ticker...", debug.DEBUG, 0)
+	_, err := pipe.Write(data)
+	if err != nil {
+		debug.SendEventsToLog(
+			fmt.Sprintf("Error exporting metrics to pipe %s: %s", pipe.Name(), err),
+			debug.DEBUG, 0)
+	} else {
+		debug.SendEventsToLog(containerID, fmt.Sprintf("Succesfully sent logs to pipe %s: Log:%s", data), debug.DEBUG, 0)
+	}
+
 }
 
 // generateRandomID is based on Docker
