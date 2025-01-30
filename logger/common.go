@@ -497,10 +497,10 @@ func exportMetricsToPipe(data []byte, pipe *os.File, containerID string) {
 	_, err := pipe.Write(data)
 	if err != nil {
 		debug.SendEventsToLog(containerID,
-			fmt.Sprintf("Error exporting metrics to pipe %s: %s", pipe.Name(), err),
+			fmt.Sprintf("Error exporting metrics to pipe %s: %v", pipe.Name(), err),
 			debug.DEBUG, 0)
 	} else {
-		debug.SendEventsToLog(containerID, fmt.Sprintf("Succesfully sent logs to pipe %s: Log:%s", data), debug.DEBUG, 0)
+		debug.SendEventsToLog(containerID, fmt.Sprintf("Successfully sent logs to pipe %v", data), debug.DEBUG, 0)
 	}
 
 }
